@@ -6,6 +6,8 @@ Run:
 
 from __future__ import annotations
 
+from typing import Iterable
+
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
@@ -18,23 +20,32 @@ TARGET_CANDIDATES = [
     "default",
     "default payment next month",
     "default.payment.next.month",
+    "default_payment_next_month",
 ]
 
 
-def resolve_target_column(df: pd.DataFrame) -> str:
-    for candidate in TARGET_CANDIDATES:
-        if candidate in df.columns:
-            return candidate
+def normalize_name(name: str) -> str:
+    return " ".join(
+        name.strip().lower().replace(".", " ").replace("_", " ").split()
+    )
+
+
+def resolve_target_column(columns: Iterable[str]) -> str:
+    normalized_candidates = {normalize_name(candidate) for candidate in TARGET_CANDIDATES}
+    for column in columns:
+        if normalize_name(column) in normalized_candidates:
+            return column
     raise ValueError(
-        "Target column was not found. Expected one of: "
-        + ", ".join(TARGET_CANDIDATES)
+        "Target column was not found. "
+        f"Expected variants like: {', '.join(TARGET_CANDIDATES)}"
     )
 
 
 def load_and_prepare_data(path: str) -> tuple[pd.DataFrame, pd.Series]:
     df = pd.read_csv(path)
     df.columns = df.columns.str.strip()
-    target_column = resolve_target_column(df)
+
+    target_column = resolve_target_column(df.columns)
     df = df.rename(columns={target_column: "default"})
 
     cat_features = ["SEX", "EDUCATION", "MARRIAGE"]
@@ -83,6 +94,7 @@ def main() -> None:
     y_pred_proba = clf.predict_proba(X_test)[:, 1]
     y_pred = clf.predict(X_test)
 
+    print(f"Detected target column: {resolve_target_column(pd.read_csv(DATA_PATH, nrows=0).columns)}")
     print(f"ROC-AUC: {roc_auc_score(y_test, y_pred_proba):.4f}")
     print(classification_report(y_test, y_pred))
     print("Confusion matrix:\n", confusion_matrix(y_test, y_pred))
